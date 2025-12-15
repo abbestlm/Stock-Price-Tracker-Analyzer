@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Prices</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+            color: #343a40;
+        }
+
+        .search-container {
+            margin: 2rem auto;
+            text-align: center;
+            padding: 1rem;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+        }
+
+        .search-container input[type="text"] {
+            padding: 0.75rem;
+            font-size: 1rem;
+            width: calc(100% - 140px);
+            max-width: 400px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-right: 1rem;
+        }
+
+        .search-container button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background-color: #007bff;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .search-container button:hover {
+            background-color: #0056b3;
+        }
+
+        #stock-data {
+            margin: 2rem auto;
+            padding: 1rem;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 1200px;
+            overflow-x: auto;
+        }
+
+        #stock-data table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        #stock-data th,
+        #stock-data td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        #stock-data th {
+            background-color: #007bff;
+            color: #fff;
+        }
+
+        #stock-data tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        #chart-container {
+            margin: 2rem auto;
+            padding: 1rem;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 1200px;
+        }
+
+        .chart-controls {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .chart-controls button {
+            padding: 0.5rem 1rem;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            background-color: #ffffff;
+            color: #343a40;
+            cursor: pointer;
+            margin: 0 0.5rem;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .chart-controls button:hover {
+            background-color: #007bff;
+            color: #ffffff;
+            border-color: #007bff;
+        }
+
+        .chart-controls button.active {
+            background-color: #007bff;
+            color: #ffffff;
+            border-color: #007bff;
+        }
+
+        .error {
+            color: #dc3545;
+            font-size: 1rem;
+        }
+
+        .chart {
+            width: 100%;
+            height: 400px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let stockData = {};
+        let chartInstance = null;
+        let currentChartType = 'line'; // Default chart type
+        let currentTicker = '';
+
+        async function fetchStockPrices(ticker = '') {
+            try {
+                const response = await fetch(`/stock_prices?ticker=${ticker}`);
+                const data = await response.json();
+                if (data.error) {
+                    document.getElementById('stock-data').innerHTML = `<p class="error">Error: ${data.error}</p>`;
+                    return;
+                }
+
+                stockData = data;
+
+                const stockRows = Object.keys(stockData).map(ticker => {
+                    const stats = stockData[ticker].slice(-1)[0];
+                    return `
+                        <tr>
+                            <td><span class="link" onclick="showChart('${ticker}')">${ticker}</span></td>
+                            <td>$${stats.open.toFixed(2)}</td>
+                            <td>$${stats.close.toFixed(2)}</td>
+                            <td>$${stats.high.toFixed(2)}</td>
+                            <td>$${stats.low.toFixed(2)}</td>
+                            <td>${stats.volume.toLocaleString()}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                document.getElementById('stock-data').innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Open</th>
+                                <th>Close</th>
+                                <th>High</th>
+                                <th>Low</th>
+                                <th>Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${stockRows}
+                        </tbody>
+                    </table>
+                `;
+
+                document.getElementById('chart-container').innerHTML = `
+                    <div class="chart-controls">
+                        <button onclick="changeChartType('line')" class="${currentChartType === 'line' ? 'active' : ''}">Line Chart</button>
+                        <button onclick="changeChartType('floating-bar')" class="${currentChartType === 'floating-bar' ? 'active' : ''}">Floating Bar Chart</button>
+                    </div>
+                    <canvas id="chart" class="chart"></canvas>
+                `;
+
+                if (Object.keys(stockData).length > 0) {
+                    showChart(Object.keys(stockData)[0]);
+                }
+
+            } catch (error) {
+                console.error('Error fetching stock data:', error);
+                document.getElementById('stock-data').innerHTML = '<p class="error">Error fetching stock data.</p>';
+            }
+        }
+
+        function changeChartType(type) {
+            currentChartType = type;
+            if (currentTicker) {
+                showChart(currentTicker);
+            }
+        }
+
+        function showChart(ticker) {
+            const data = stockData[ticker];
+            if (!data) return;
+
+            currentTicker = ticker; // Update the current ticker
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            const labels = data.map(item => new Date(item.date).toLocaleDateString());
+            const closePrices = data.map(item => item.close);
+            const openPrices = data.map(item => item.open);
+
+            const ctx = document.getElementById('chart').getContext('2d');
+
+            if (currentChartType === 'floating-bar') {
+                const previousClosePrices = data.map((item, index) => (index === 0 ? item.open : data[index - 1].close));
+                const priceMovements = data.map((item, index) => ({
+                    y: [previousClosePrices[index], item.close],
+                    backgroundColor: item.close > previousClosePrices[index] ? '#28a745' : '#dc3545',
+                }));
+
+                chartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Price Movement',
+                            data: priceMovements.map(movement => movement.y),
+                            backgroundColor: priceMovements.map(movement => movement.backgroundColor),
+                            borderWidth: 0,
+                            barThickness: 5,
+                            categoryPercentage: 1,
+                            barPercentage: 1,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        indexAxis: 'x',
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Date'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Price'
+                                },
+                                beginAtZero: false,
+                            }
+                        }
+                    }
+                });
+            } else {
+                chartInstance = new Chart(ctx, {
+                    type: currentChartType,
+                    data: {
+                        labels: labels,
+                        datasets: currentChartType === 'line' ? [{
+                            label: 'Close Price',
+                            data: closePrices,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            borderWidth: 2,
+                            fill: true
+                        }] : [
+                            {
+                                label: 'Open Price',
+                                data: openPrices,
+                                backgroundColor: '#007bff',
+                                borderColor: '#0056b3',
+                                borderWidth: 1,
+                                stack: 'stack0'
+                            },
+                            {
+                                label: 'Close Price',
+                                data: closePrices,
+                                backgroundColor: '#28a745',
+                                borderColor: '#1e7e34',
+                                borderWidth: 1,
+                                stack: 'stack1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += `$${context.parsed.y.toFixed(2)}`;
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Date'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Price'
+                                },
+                                beginAtZero: false
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            document.getElementById('search-button').addEventListener('click', function () {
+                const ticker = document.getElementById('search-input').value.trim().toUpperCase();
+                fetchStockPrices(ticker);
+            });
+
+            // Optional: Allow pressing Enter to trigger search
+            document.getElementById('search-input').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    document.getElementById('search-button').click();
+                }
+            });
+        });
+    </script>
+</head>
+
+<body>
+    <div class="search-container">
+        <input type="text" id="search-input" placeholder="Enter ticker symbol (e.g., AAPL)">
+        <button id="search-button">Search</button>
+    </div>
+    <div id="stock-data"></div>
+    <div id="chart-container"></div>
+</body>
+
+</html>
