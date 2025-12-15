@@ -14,6 +14,9 @@ Stock Price Tracker & Analyzer is a web application that fetches and displays **
 - Financial APIs for live stock data
 
 ## Installation & Usage
+# Replace with your Polygon.io API key
+api_key = 'your_polygon_api_key_here'
+
 1. Clone the repository:
    ```bash
    git clone https://github.com/abbestlm/Stock.git
